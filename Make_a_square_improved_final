@@ -1,0 +1,127 @@
+	#include p18f87k22.inc
+	
+acs0 udata_acs
+direction_indicator res 1 
+start_point_x res 1
+start_point_y res 1
+line_length res 1
+	
+
+rst	code 0
+	goto	start
+
+main	code
+start
+	movlw	0xff
+	movwf	0x07, ACCESS	    ; For pulsing PORT E high, later.
+	movlw 	0x0
+	movwf	TRISC, ACCESS	    ; Port C all outputs (Channel 1)
+	movwf	TRISE, ACCESS	    ; PORT E all outputs (Write/Latch Pulse for DAC)
+	movwf	TRISD, ACCESS	    ; Port D all outputs (Channel 2)
+	bra Draw_Square
+
+Draw_Square
+	movlw	0x00
+	movwf	start_point_x
+	movwf	start_point_y		; set start point of square at 0x00, 0x00.
+	movff	start_point_x, PORTC	; outputs initial value of x
+	movff	start_point_y, PORTD	; outputs initial value of y
+	movlw	0x00
+	movwf	direction_indicator	; direction_indicator set to 0,1,2, or 3. 0 means draw left, 1 means draw right, 2 means draw up, 3 means draw down.
+	movlw	0xfe
+	movwf	line_length
+	call	draw_line
+	movlw	0x03
+	movwf	direction_indicator	; direction_indicator set to 0,1,2, or 3. 0 means draw left, 1 means draw right, 2 means draw up, 3 means draw down.
+	movlw	0xfe
+	movwf	line_length
+	call	draw_line
+	movlw	0x01
+	movwf	direction_indicator	; direction_indicator set to 0,1,2, or 3. 0 means draw left, 1 means draw right, 2 means draw up, 3 means draw down.
+	movlw	0xfe
+	movwf	line_length
+	call	draw_line
+	movlw	0x02
+	movwf	direction_indicator	; direction_indicator set to 0,1,2, or 3. 0 means draw left, 1 means draw right, 2 means draw up, 3 means draw down.
+	movlw	0xfe
+	movwf	line_length
+	call draw_line
+    
+	
+goto 	0		    ; Re-run program from start
+	 
+draw_line
+	movlw	0x01
+	cpfsgt	direction_indicator
+	bra	horizontal_line
+	bra	vertical_line
+horizontal_line
+	cpfseq	direction_indicator
+	bra	draw_left
+	bra	draw_right
+vertical_line
+	movlw	0x02
+	cpfseq	direction_indicator
+	bra	draw_down
+	bra	draw_up
+draw_left
+	movf	line_length, W, ACCESS
+	addwf	PORTC, W, ACCESS
+	bra 	testx1
+loopx1				    ; increments X, i.e. draws a line from right to left
+	;call	bigdelay
+	incf 	PORTC, 1, ACCESS
+testx1	movff	TRISE, PORTE	    ; pulse PORT E low (TRISE is set to 0x00)
+	movff	0x07, PORTE	    ; pulse PORT E high (latch/unlatch data in DACs)
+	cpfsgt 	PORTC, ACCESS
+	bra 	loopx1		    ; Not yet finished goto start of loop again
+	return
+draw_right
+	movf	line_length, W, ACCESS
+	subwf	PORTC, W, ACCESS
+	bra	testx2
+loopx2				    ; decrements X, i.e. draws a line from left to right
+	;call	bigdelay
+	decf 	PORTC, 1, ACCESS
+testx2	movff	TRISE, PORTE	    ; pulse PORT E low (TRISE is set to 0x00)
+	movff	0x07, PORTE	    ; pulse PORT E high - in other words, latch and unlatch the data in the DAC(?)
+	cpfseq 	PORTC, ACCESS
+	bra 	loopx2		    ; Not yet finished goto start of loop again
+	return
+draw_up
+	movf	line_length, W, ACCESS
+	subwf	PORTD, W, ACCESS
+	bra	testy2
+loopy2				    ; decrements Y, i.e. draws a line from bottom to top
+	;call	bigdelay
+	decf 	PORTD, 1, ACCESS
+testy2	movff	TRISE, PORTE	    ; pulse PORT E low (TRISE is set to 0x00)
+	movff	0x07, PORTE	    ; pulse PORT E high - in other words, latch and unlatch the data in the DAC(?)
+	cpfseq 	PORTD, ACCESS
+	bra 	loopy2		    ; Not yet finished goto start of loop again
+	return
+draw_down
+	movf	line_length, W, ACCESS
+	addwf	PORTD, W, ACCESS
+	bra	testy1
+loopy1				    ; increments Y, i.e. draws a line from top to bottom
+	;call	bigdelay
+	incf 	PORTD, 1, ACCESS
+testy1	movff	TRISE, PORTE	    ; pulse PORT E low (TRISE is set to 0x00)
+	movff	0x07, PORTE	    ; pulse PORT E high - in other words, latch and unlatch the data in the DAC(?)
+	cpfsgt 	PORTD, ACCESS
+	bra 	loopy1		    ; Not yet finished goto start of loop again
+	return
+	
+bigdelay			    ; delay for if needed
+	movlw high(0xFFFF)	    ; load 16bit number into
+	movf 0x10		    ; FR 0x10
+	movlw low(0xFFFF)
+	movwf 0x11		    ; and FR 0x11
+	movlw 0x00		    ; W=0
+dloop	decf 0x11,f		    ; no carry when 0x00 -> 0xff
+	subwfb 0x10,f		    ; no carry when 0x00 -> 0xff
+	bc dloop		    ; if carry, then loop again
+	return			    ; carry not set so return
+	
+	end
