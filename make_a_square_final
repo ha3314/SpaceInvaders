@@ -1,0 +1,88 @@
+	#include p18f87k22.inc
+	
+	code
+	org 0x0
+	goto	start
+	
+	org 0x100		    ; Main code starts here at address 0x100
+
+start
+	movlw	0xff
+	movwf	0x07, ACCESS	    ; For pulsing PORT E high, later.
+	movlw 	0x0
+	movwf	TRISC, ACCESS	    ; Port C all outputs (Channel 1)
+	movwf	TRISE, ACCESS	    ; PORT E all outputs (Write/Latch Pulse for DAC)
+	movwf	TRISD, ACCESS	    ; Port D all outputs (Channel 2)
+	
+	bra 	testx1
+loopx1	movff 	0x06, PORTC         ; increments X, i.e. draws a line from right to left
+	;call	bigdelay
+	incf 	0x06, W, ACCESS
+testx1	movwf	0x06, ACCESS	    ; Test for end of loop condition
+	
+	movff	TRISE, PORTE	    ; pulse PORT E low (TRISE is set to 0x00)
+	movff	0x07, PORTE	    ; pulse PORT E high - in other words, latch and unlatch the data in the DAC(?)
+	movlw	0xfe
+	cpfsgt 	0x06, ACCESS
+	bra 	loopx1		    ; Not yet finished goto start of loop again
+	
+	clrf	0x06
+	movlw	0x0
+	bra	testy1
+	
+loopy1	movff 	0x06, PORTD	    ; increments Y, i.e. draws a line from top to bottom
+	;call	bigdelay
+	incf 	0x06, W, ACCESS
+testy1	movwf	0x06, ACCESS	    ; Test for end of loop condition
+	
+	movff	TRISE, PORTE	    ; pulse PORT E low (TRISE is set to 0x00)
+	movff	0x07, PORTE	    ; pulse PORT E high - in other words, latch and unlatch the data in the DAC(?)
+	movlw	0xfe
+	cpfsgt 	0x06, ACCESS
+	bra 	loopy1		    ; Not yet finished goto start of loop again
+	
+	clrf	0x06
+	movlw	0xff
+	bra	testx2
+	
+loopx2	movff 	0x06, PORTC	    ; decrements X, i.e. draws a line from left to right
+	;call	bigdelay
+	decf 	0x06, W, ACCESS
+testx2	movwf	0x06, ACCESS	    ; Test for end of loop condition
+	
+	movff	TRISE, PORTE	    ; pulse PORT E low (TRISE is set to 0x00)
+	movff	0x07, PORTE	    ; pulse PORT E high - in other words, latch and unlatch the data in the DAC(?)
+	movlw	0x01
+	cpfseq 	0x06, ACCESS
+	bra 	loopx2		    ; Not yet finished goto start of loop again
+	
+	
+	clrf	0x06
+	movlw	0xff
+	bra	testy2
+	
+loopy2	movff 	0x06, PORTD	    ; decrements Y, i.e. draws a line from bottom to top
+	;call	bigdelay
+	decf 	0x06, W, ACCESS
+testy2	movwf	0x06, ACCESS	    ; Test for end of loop condition
+	
+	movff	TRISE, PORTE	    ; pulse PORT E low (TRISE is set to 0x00)
+	movff	0x07, PORTE	    ; pulse PORT E high - in other words, latch and unlatch the data in the DAC(?)
+	movlw	0x01
+	cpfseq 	0x06, ACCESS
+	bra 	loopy2		    ; Not yet finished goto start of loop again
+	
+	goto 	0		    ; Re-run program from start
+	
+bigdelay			    ; delay for if needed
+	movlw high(0xFFFF)	    ; load 16bit number into
+	movf 0x10		    ; FR 0x10
+	movlw low(0xFFFF)
+	movwf 0x11		    ; and FR 0x11
+	movlw 0x00		    ; W=0
+dloop	decf 0x11,f		    ; no carry when 0x00 -> 0xff
+	subwfb 0x10,f		    ; no carry when 0x00 -> 0xff
+	bc dloop		    ; if carry, then loop again
+	return			    ; carry not set so return
+	
+	end
