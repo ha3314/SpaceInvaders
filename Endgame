@@ -1,0 +1,95 @@
+#include p18f87k22.inc
+
+            global  end_game
+	    extern  Draw_Shape
+	    extern Setup, smalldelay
+	    extern direction_indicator, start_point_x, start_point_y, line_length, delaycounter, shapecounter, Shape_Upper_Data, Shape_Higher_Data, Shape_Lower_Data, initial_counter
+	    extern cover_counter, alien_counter, interrupt_counter, animate_indicator, bullet_activate, left_right_check, animate_right_counter, animate_left_counter
+	    extern animate_down_counter, Key1_Press, Key2_Press, Key3_Press, Key_Pressed, row_1_check, row_2_check, row_3_check, row_4_check, mothership_row_check
+	    extern cover_row_check, column_1_check, column_2_check, column_3_check, column_4_check, column_5_check, mothership_column_check, cover_1_column_check
+	    extern cover_2_column_check, cover_3_column_check, cover_4_column_check, AoD_counter, columnvalue10, columnvalue22, columnvalue50, columnvalue20
+	    extern victory_counter, defeatcounter, end_game_counter, aliens_dead_on_row, downcounter
+	    
+pdata code
+Alien_1_1_Data	dw	010Ah
+
+WinLosecode CODE
+
+
+
+end_game					    ; checks for defeat condition if downcounter > 4 and < 12. Downcounter increments each time the aliens move downwards in Animate_Alien. Checks for victory condition otherwise (if no defeat after downcounter = 11 we must have a victory, actually), or if defeat condition checked and not met.
+    movf    end_game_counter, W			    ; initially set to 4 in setup, to check if row 1 has hit bottom with aliens alive. Increments by 2 each time we check for defeat condition, so the next row will cause a defeat (if all aliens on it aren't killed) after moving down twice more.
+    cpfsgt  downcounter				    ; if downcounter > 4, lose if row 1 hasn't been cleared, so have to check for that loss condition now. Before it is >4, no possible way to lose, so just check for victory condition.						    
+    bra	    victory_check
+    movlw   .11
+    cpfseq  end_game_counter			    ; however, only want to check for rows 1, 2, 3, 4. If none of those have hit bottom, then no defeat and want to break loop.
+    bra	    defeat_check
+    bra	    victory_check
+victory_check
+    movlb   0x5
+    lfsr    FSR1, 0x500				    ; load FSR1 with AoD (0x500) to cycle through and check all the aliens alive or dead.
+    movlw   .20
+    movwf   victory_counter
+victory_loop					    ; checks if all 20 aliens have been killed. If not, returns. If yes, branches to victory_confirmed.
+    btfss   POSTINC1, 0
+    return
+    decfsz  victory_counter
+    bra	    victory_loop
+    bra	    victory_confirmed
+victory_confirmed				    ; victory screen! Just a little line in the top right of the screen for now.
+    movlb   0x4
+    lfsr    FSR0, 0x400
+    movlw   upper(Alien_1_1_Data)		    
+    movwf   Shape_Upper_Data	
+    movlw   high(Alien_1_1_Data)		
+    movwf   Shape_Higher_Data	
+    movlw   low(Alien_1_1_Data)		
+    movwf   Shape_Lower_Data	
+    movlw   .1
+    movwf   shapecounter		
+    movlw   0x2A			
+    movwf   start_point_x
+    movwf   start_point_y
+    movff   start_point_x, PORTC	
+    movff   start_point_y, PORTD	
+    
+    call    Draw_Shape
+    bra	    victory_confirmed		    ; moves into an infinite loop just drawing the little victory mark in top right of screen.
+	
+defeat_check					    ; checks if any row 1 aliens alive after downcounter = 5. If so, then defeat. Similarly for row 2 aliens when downcounter = 7, row 3 for downcounter = 9, and row 4 for downcounter = 11.
+	movlw	.5
+	movwf	defeatcounter
+defeat_loop				
+	btfsc	POSTINC2, 0			    ; cycle through AoD using FSR2, checking if aliens are alive - skip if alive, don't if dead.
+	incf	aliens_dead_on_row		    ; increment for every dead alien
+	movf	aliens_dead_on_row, W
+	decfsz	defeatcounter			    ; defeatcounter=5 as 5 aliens per row
+	bra	defeat_loop
+	movlw	.5
+	cpfseq	aliens_dead_on_row		    ; if 5 aliens dead on row, no defeat. Otherwise, must be some alive aliens, defeat.
+	bra	defeat_confirmed
+	incf	end_game_counter, f
+	incf	end_game_counter, f		    ; do twice as need second row of aliens to move down twice before they're at the bottom (and 2 more for third, 2 more for fourth)
+	clrf	aliens_dead_on_row		    ; reset aliens dead on row for next time defeat condition is checked
+	bra	end_game			    ; goes back to end_game to check for victory condition
+defeat_confirmed				    ; defeat screen! Just a little line in the bottom left corner for now.
+	movlb	0x4
+	lfsr	FSR0, 0x400
+	movlw	upper(Alien_1_1_Data)	
+	movwf	Shape_Upper_Data	
+	movlw	high(Alien_1_1_Data)		
+	movwf	Shape_Higher_Data	
+	movlw	low(Alien_1_1_Data)		
+	movwf	Shape_Lower_Data	
+	movlw	.1
+	movwf	shapecounter		
+	movlw	0xEF			
+	movwf	start_point_x
+	movwf	start_point_y
+	movff	start_point_x, PORTC	
+	movff	start_point_y, PORTD	
+
+	call	Draw_Shape
+	bra	defeat_confirmed		    ; moves into infinite loop of just drawing the little line in bottom left.
+
+    end
