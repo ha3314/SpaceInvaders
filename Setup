@@ -1,0 +1,215 @@
+    #include p18f87k22.inc
+
+            global Setup, smalldelay
+	    global direction_indicator, start_point_x, start_point_y, line_length, delaycounter, shapecounter, Shape_Upper_Data, Shape_Higher_Data, Shape_Lower_Data, initial_counter
+	    global cover_counter, alien_counter, interrupt_counter, animate_indicator, bullet_activate, left_right_check, animate_right_counter, animate_left_counter
+	    global animate_down_counter, Key1_Press, Key2_Press, Key3_Press, Key_Pressed, row_1_check, row_2_check, row_3_check, row_4_check, mothership_row_check
+	    global cover_row_check, column_1_check, column_2_check, column_3_check, column_4_check, column_5_check, mothership_column_check, cover_1_column_check
+	    global cover_2_column_check, cover_3_column_check, cover_4_column_check, AoD_counter, columnvalue10, columnvalue22, columnvalue50, columnvalue20
+	    global victory_counter, defeatcounter, end_game_counter, aliens_dead_on_row, downcounter
+acs0 udata_acs
+direction_indicator res 1 
+start_point_x res 1
+start_point_y res 1
+line_length res 1
+delaycounter res 1
+shapecounter res 1
+Shape_Upper_Data res 1
+Shape_Higher_Data res 1
+Shape_Lower_Data res 1
+initial_counter res 1
+cover_counter res 1
+alien_counter res 1
+interrupt_counter res 1
+animate_indicator res 1
+bullet_activate res 1
+left_right_check res 1
+animate_right_counter res 1
+animate_left_counter res 1
+animate_down_counter res 1
+Key1_Press res 1
+Key3_Press res 1
+Key2_Press res 1
+Key_Pressed res 1
+row_1_check res 1
+row_2_check res 1
+row_3_check res 1
+row_4_check res 1
+mothership_row_check res 1
+cover_row_check res 1
+column_1_check res 1
+column_2_check res 1
+column_3_check res 1
+column_4_check res 1
+column_5_check res 1
+mothership_column_check res 1
+cover_1_column_check res 1
+cover_2_column_check res 1
+cover_3_column_check res 1
+cover_4_column_check res 1
+AoD_counter res 1
+columnvalue10 res 1
+columnvalue22 res 1
+columnvalue50 res 1
+columnvalue20 res 1
+downcounter res 1
+victory_counter res 1
+defeatcounter res 1
+end_game_counter res 1
+aliens_dead_on_row res 1
+ 
+Sprite_Start	udata 0x400
+Sprite_Starts	res 0xC		; (6 x-positions and 6 y-positions for the 6 initial start points)
+	
+Alive_or_Dead	udata 0x500
+AoD		res   .21	; 20 aliens, one mothership
+		
+pdata	code
+	
+Sprite_Initial_Positions
+		dw	0xFB8F			; alien type 1, alien 1 initial position - decrement x start by 32 four times, then increment x start by 160 and decrement y start by 32 once, and decrement x start by 32 four more times to draw first two rows
+		dw	0xFB4F			; alien type 2, alien 1 initial position - decrement x start by 32 four times for others
+		dw	0xFB2F			; alien type 3, alien 1 initial position - decrement x start by 32 four times for others
+		dw	0xFB0F			; mothership initial position	
+		dw	0x87EF			; ship initial position
+		dw	0xFBCF  		; cover initial positions - decrement x by 50 each time for others
+
+Setupcode CODE                      
+ 
+Setup
+ 
+FLASH	; ******* Programme FLASH read Setup Code ****  
+	bcf	EECON1, CFGS			; point to Flash program memory  
+	bsf	EECON1, EEPGD			; access Flash program memory
+
+PORTs	; ******* PORT Setup Code ****
+	bsf 	PADCFG1, REPU, BANKED		; setting pull-ups on PORTE for keypad
+	movlw 	0x00
+	movwf	TRISC, ACCESS			; Port C all outputs (Channel 1, x-axis)
+	movwf	TRISD, ACCESS			; Port D all outputs (Channel 2, y-axis)
+	
+Sprite_Inits	; ****** Sprite_Initial_Positions Setup Code ****
+	lfsr	FSR0, 	Sprite_Starts		; Load FSR0 with address in RAM	
+	movlw	upper(Sprite_Initial_Positions)	; address of data in PM
+	movwf	TBLPTRU				; load upper bits to TBLPTRU
+	movlw	high(Sprite_Initial_Positions)	; address of data in PM
+	movwf	TBLPTRH				; load high byte to TBLPTRH
+	movlw	low(Sprite_Initial_Positions)	; address of data in PM
+	movwf	TBLPTRL				; load low byte to TBLPTRL
+	movlw	.7				; number of words to read
+	movwf 	initial_counter			; counter
+loop 	tblrd*+					; one byte (lower byte of word) from PM to TABLAT, increment TBLPRT
+	movff	TABLAT, POSTINC0		; move data from TABLAT to (FSR0), inc FSR0
+	tblrd*+					; one byte (higher byte of word) from PM to TABLAT, increment TBLPRT
+	movff	TABLAT, POSTINC0		; move data from TABLAT to (FSR0), inc FSR0
+	decfsz	initial_counter, 1		; count down to zero
+	bra	loop				; keep going until finished
+	
+IE	; ****** Interrupt and timer0 Setup Code ****
+	movlw 	b'10000111'			; Set timer0 to 16-bit, Fosc/4/256
+	movwf 	T0CON				; = 62.5KHz clock rate, approx 1sec rollover
+	bsf 	INTCON, TMR0IE			; Enable timer0 interrupt
+	bsf 	INTCON, GIE			; Enable all interrupts
+	
+AoD_Setup   ; ****** Set all Aliens to Alive Initially ****
+	lfsr	FSR1, AoD			; use FSR1 to point to the block of data memory containing alive or dead info
+	movlw	.21				; 21 aliens - 20 normal, 1 mothership
+	movwf	AoD_counter
+AoD_Setup_Loop
+	clrf	POSTINC1			; 0 means aliens alive, so set all to 0 initially
+	decfsz	AoD_counter
+	bra	AoD_Setup_Loop
+
+Values_Setup	; ****** Sets up initial or once-off values for variables ****
+	movlw	.10				; no "sub literal from W" command, but there is a "subfwb" command so use file registers for the maths in column checkers (see hit detection)
+	movwf	columnvalue10
+	movlw	.22
+	movwf	columnvalue22 
+	movlw	.50
+	movwf	columnvalue50 
+	movlw	.20
+	movwf	columnvalue20 
+	
+	clrf	interrupt_counter		; reset these values from previous run of game
+	clrf	left_right_check
+	bcf	bullet_activate, 0
+	clrf	downcounter
+	clrf	victory_counter
+	clrf	defeatcounter
+	clrf	end_game_counter
+	clrf	aliens_dead_on_row
+
+	movlw	0x11
+	movwf	Key1_Press
+	movlw	0x12
+	movwf	Key2_Press
+	movlw	0x14
+	movwf	Key3_Press
+	
+	movlw   .4				; set end_game_counter to 4 initially, to check for defeat condition when first row hits bottom (see end_game)
+	movwf   end_game_counter
+	
+	lfsr    FSR2, AoD			; initially load FSR2 with AoD for the defeat loop, so we can use POSTINC2 to check whether aliens are alive or not as each row hits the bottom.
+
+	return
+	
+smalldelay					; a clumsy but effective small delay routine. Forgive me.
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+ 	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	return
+	
+    end
