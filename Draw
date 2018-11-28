@@ -15,13 +15,7 @@ Ship_Data	dw	0x011C, 0x020A, 0x0002, 0x0202, 0x0008
 		dw	0x0206, 0x0003, 0x0202, 0x0002, 0x0302 
 		dw	0x0003, 0x0306, 0x0008, 0x0302, 0x0002, 0x030A 	; words describing lines - higher byte is direction, lower byte is length of line
 		
-Cover_1_Data	dw	0104h, 0208h, 0101h, 0201h, 0101h
-		dw	0201h, 0101h, 0201h, 0101h, 0201h
-		dw	0x0204, 0301h, 0101h, 0301h, 0101h
-		dw	0301h, 0101h, 0301h, 0101h, 0308h
-		dw	0104h, 020Eh, 0001h, 0201h, 0001h
-		dw	0201h, 0001h, 0201h, 000Eh, 0301h
-		dw	0001h, 0301h, 0001h, 0301h, 0001h, 030Eh
+Cover_1_Data	dw	0114h, 0208h, 0014h, 0308h
 		
 Bullet_Data	dw 	0201h
 		
@@ -196,8 +190,8 @@ Cover1	movlw	upper(Cover_1_Data)		; address of cover 1 data in PM
 	movwf	Shape_Higher_Data		; load high byte of Cover_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
 	movlw	low(Cover_1_Data)		; address of cover 1 data in PM
 	movwf	Shape_Lower_Data		; load low byte of Cover_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
-	movlw	.35
-	movwf	shapecounter			; number of lines for this shape (35)
+	movlw	.4
+	movwf	shapecounter			; number of lines for this shape (4)
 	movf	POSTINC0, W 
 	movwf	start_point_y
 	movf	POSTINC0, W 
@@ -209,7 +203,7 @@ Cover1	movlw	upper(Cover_1_Data)		; address of cover 1 data in PM
 	movwf	cover_counter
 coverloop					; same idea as alien1,2,3loops above
 	call	Draw_Shape
-	movlw	.35
+	movlw	.4
 	movwf	shapecounter
 	movlw	.70
 	subwf	start_point_x, 1
