@@ -1,0 +1,319 @@
+#include p18f87k22.inc
+
+            global  Draw, Draw_Shape, draw_line
+	    extern  smalldelay
+	    extern direction_indicator, start_point_x, start_point_y, line_length, delaycounter, shapecounter, Shape_Upper_Data, Shape_Higher_Data, Shape_Lower_Data, initial_counter
+	    extern cover_counter, alien_counter, interrupt_counter, animate_indicator, bullet_activate, left_right_check, animate_right_counter, animate_left_counter
+	    extern animate_down_counter, Key1_Press, Key2_Press, Key3_Press, Key_Pressed, row_1_check, row_2_check, row_3_check, row_4_check, mothership_row_check
+	    extern cover_row_check, column_1_check, column_2_check, column_3_check, column_4_check, column_5_check, mothership_column_check, cover_1_column_check
+	    extern cover_2_column_check, cover_3_column_check, cover_4_column_check, AoD_counter, columnvalue10, columnvalue22, columnvalue50, columnvalue20
+	    extern victory_counter, defeatcounter, end_game_counter, aliens_dead_on_row, downcounter
+		
+pdata code
+
+Ship_Data	dw	0x011C, 0x020A, 0x0002, 0x0202, 0x0008
+		dw	0x0206, 0x0003, 0x0202, 0x0002, 0x0302 
+		dw	0x0003, 0x0306, 0x0008, 0x0302, 0x0002, 0x030A 	; words describing lines - higher byte is direction, lower byte is length of line
+		
+Cover_1_Data	dw	0104h, 0208h, 0101h, 0201h, 0101h
+		dw	0201h, 0101h, 0201h, 0101h, 0201h
+		dw	0x0204, 0301h, 0101h, 0301h, 0101h
+		dw	0301h, 0101h, 0301h, 0101h, 0308h
+		dw	0104h, 020Eh, 0001h, 0201h, 0001h
+		dw	0201h, 0001h, 0201h, 000Eh, 0301h
+		dw	0001h, 0301h, 0001h, 0301h, 0001h, 030Eh
+		
+Bullet_Data	dw 	0201h
+		
+Alien_1_1_Data	dw	010Ah
+	
+Alien_2_1_Data	dw	010Ah
+	
+Alien_3_1_Data	dw	010Ah
+	
+Mothership_Data	dw	010Ah
+		
+Sprite_Initial_Positions
+		dw	0xFB8F			; alien type 1, alien 1 initial position - decrement x start by 32 four times, then increment x start by 160 and decrement y start by 32 once, and decrement x start by 32 four more times to draw first two rows
+		dw	0xFB4F			; alien type 2, alien 1 initial position - decrement x start by 32 four times for others
+		dw	0xFB2F			; alien type 3, alien 1 initial position - decrement x start by 32 four times for others
+		dw	0xFB0F			; mothership initial position	
+		dw	0x87EF			; ship initial position
+		dw	0xFBCF  		; cover initial positions - decrement x by 50 each time for others
+
+Drawcode CODE                    
+
+Draw						; Draw sprites
+	
+	lfsr	FSR0, 	0x400			; sets FSR0 to 0x400 (Sprite_Starts), to read start points for sprites throughout Draw
+	lfsr	FSR1,	0x500			; sets FSR1 to 0x500 (AoD), to read alive or dead information for aliens throughout Draw
+
+Alien1	movlw	upper(Alien_1_1_Data)		; address of ship data in PM
+	movwf	Shape_Upper_Data		; load upper bits of Alien_1_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	high(Alien_1_1_Data)		; address of ship data in PM
+	movwf	Shape_Higher_Data		; load high byte of Alien_1_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	low(Alien_1_1_Data)		; address of ship data in PM
+	movwf	Shape_Lower_Data		; load low byte of Alien_1_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	.1
+	movwf	shapecounter			; number of lines for this shape (1)
+	movf	POSTINC0, W 
+	movwf	start_point_y
+	movf	POSTINC0, W 
+	movwf	start_point_x			; set start point of shape
+	movff	start_point_x, PORTC		; outputs initial value of x
+	movff	start_point_y, PORTD		; outputs initial value of y
+	
+	movlw 	.5
+	movwf	alien_counter
+	
+alien1loop1					; loops over "draw shape", changing start point each time, to duplicate alien 1 sprite
+	btfss	POSTINC1, 0			; loop reads through block of data pointed to by FSR1. Only draw the alien if it's alive (bit is clear), don't if it's dead (bit is set.)
+	call	Draw_Shape
+	
+	movlw	.1
+	movwf	shapecounter			; resets shapecounter to appropriate value, as Draw_Shape has reduced it to 0
+	
+	movlw	.32
+	subwf	start_point_x, 1		; decrements x start point by .32 to draw next alien
+	movff	start_point_x, PORTC		; outputs initial value of x
+	decfsz	alien_counter, 1
+	bra	alien1loop1
+	
+	movlw 	.5
+	movwf	alien_counter
+	movlw	.32
+	subwf	start_point_y, 1
+	movff	start_point_y, PORTD
+	movlw	.160
+	addwf	start_point_x, 1
+	movff	start_point_x, PORTC		; move start point to beginning of next row and output to PORTC, PORTD
+alien1loop2					; same loop as above to draw second row of alien_1s
+	btfss	POSTINC1, 0
+	call	Draw_Shape
+	movlw	.1
+	movwf	shapecounter			
+	movlw	.32
+	subwf	start_point_x, 1		
+	movff	start_point_x, PORTC		
+	decfsz	alien_counter, 1
+	bra	alien1loop2
+
+Alien2	movlw	upper(Alien_2_1_Data)		; address of ship data in PM
+	movwf	Shape_Upper_Data		; load upper bits of Alien_2_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	high(Alien_2_1_Data)		; address of ship data in PM
+	movwf	Shape_Higher_Data		; load high byte of Alien_2_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	low(Alien_2_1_Data)		; address of ship data in PM
+	movwf	Shape_Lower_Data		; load low byte of Alien_2_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	.1
+	movwf	shapecounter			; number of lines for this shape (1)
+	movf	POSTINC0, W 
+	movwf	start_point_y
+	movf	POSTINC0, W 
+	movwf	start_point_x			; set start point of shape
+	movff	start_point_x, PORTC		; outputs initial value of x
+	movff	start_point_y, PORTD		; outputs initial value of y
+
+	movlw 	.5
+	movwf	alien_counter
+alien2loop					; identical concept to alien1loop above. Continue to use POSTINC1 to iterate through the block of DM at 0x500 containing alive or dead info.
+	btfss	POSTINC1, 0
+	call	Draw_Shape
+	movlw	.1
+	movwf	shapecounter			
+	movlw	.32
+	subwf	start_point_x, 1		
+	movff	start_point_x, PORTC		
+	decfsz	alien_counter, 1
+	bra	alien2loop
+
+Alien3	movlw	upper(Alien_3_1_Data)		; address of ship data in PM
+	movwf	Shape_Upper_Data		; load upper bits of Alien_3_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	high(Alien_3_1_Data)		; address of ship data in PM
+	movwf	Shape_Higher_Data		; load high byte of Alien_3_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	low(Alien_3_1_Data)		; address of ship data in PM
+	movwf	Shape_Lower_Data		; load low byte of Alien_3_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	.1
+	movwf	shapecounter			; number of lines for this shape (1)
+	movf	POSTINC0, W	
+	movwf	start_point_y
+	movf	POSTINC0, W 
+	movwf	start_point_x			; set start point of shape
+	movff	start_point_x, PORTC		; outputs initial value of x
+	movff	start_point_y, PORTD		; outputs initial value of y
+
+	movlw 	.5
+	movwf	alien_counter
+alien3loop					; same as other loops. Note that 3 different loops had to be used so shapecounter could be set to different values for different sprites.
+	btfss	POSTINC1, 0
+	call	Draw_Shape
+	movlw	.1
+	movwf	shapecounter
+	movlw	.32
+	subwf	start_point_x, 1 
+	movff	start_point_x, PORTC
+	decfsz	alien_counter, 1
+	bra	alien3loop
+
+Mothership	
+	movlw	upper(Mothership_Data)		; address of mothership data in PM
+	movwf	Shape_Upper_Data		; load upper bits of Mothership_Data PM Address to Shape_Upper_Data, to go into TBLPTRU
+	movlw	high(Mothership_Data)		; address of mothership data in PM
+	movwf	Shape_Higher_Data		; load high byte of Mothership_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	low(Mothership_Data)		; address of mothership data in PM
+	movwf	Shape_Lower_Data		; load low byte of Mothership_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	.1
+	movwf	shapecounter			; number of lines for this shape (1)
+	movf	POSTINC0, W 
+	movwf	start_point_y
+	movf	POSTINC0, W 
+	movwf	start_point_x			; set start point of shape
+	movff	start_point_x, PORTC		; outputs initial value of x
+	movff	start_point_y, PORTD		; outputs initial value of y
+	
+	call	Draw_Shape
+
+Ship	movlw	upper(Ship_Data)		; address of ship data in PM
+	movwf	Shape_Upper_Data		; load upper bits of Ship_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	high(Ship_Data)			; address of ship data in PM
+	movwf	Shape_Higher_Data		; load high byte of Ship_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	low(Ship_Data)			; address of ship data in PM
+	movwf	Shape_Lower_Data		; load low byte of Ship_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	.16
+	movwf	shapecounter			; number of lines for this shape (16)
+	movf	POSTINC0, W 
+	movwf	start_point_y
+	movf	POSTINC0, W 
+	movwf	start_point_x			; set start point of shape
+	movff	start_point_x, PORTC		; outputs initial value of x
+	movff	start_point_y, PORTD		; outputs initial value of y
+	
+	
+	call	Draw_Shape
+	
+Cover1	movlw	upper(Cover_1_Data)		; address of cover 1 data in PM
+	movwf	Shape_Upper_Data		; load upper bits of Cover_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	high(Cover_1_Data)		; address of cover 1 data in PM
+	movwf	Shape_Higher_Data		; load high byte of Cover_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	low(Cover_1_Data)		; address of cover 1 data in PM
+	movwf	Shape_Lower_Data		; load low byte of Cover_1_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	.35
+	movwf	shapecounter			; number of lines for this shape (35)
+	movf	POSTINC0, W 
+	movwf	start_point_y
+	movf	POSTINC0, W 
+	movwf	start_point_x			; set start point of shape
+	movff	start_point_x, PORTC		; outputs initial value of x
+	movff	start_point_y, PORTD		; outputs initial value of y
+	
+	movlw	.4
+	movwf	cover_counter
+coverloop					; same idea as alien1,2,3loops above
+	call	Draw_Shape
+	movlw	.35
+	movwf	shapecounter
+	movlw	.70
+	subwf	start_point_x, 1
+	movff	start_point_x, PORTC
+	decfsz	cover_counter, 1
+	bra	coverloop
+
+Bullet 	btfss	bullet_activate, 0
+	goto	skip_bullet
+	movlw	upper(Bullet_Data)		; address of ship data in PM
+	movwf	Shape_Upper_Data		; load upper bits of Bullet_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	high(Bullet_Data)		; address of ship data in PM
+	movwf	Shape_Higher_Data		; load high byte of Bullet_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	low(Bullet_Data)		; address of ship data in PM
+	movwf	Shape_Lower_Data		; load low byte of Bullet_Data PM Address to Shape_Lower_Data, to go into TBLPTRL
+	movlw	.1
+	movwf	shapecounter			; number of lines for this shape (1)
+	movlb	0x4
+	movff	POSTINC0, start_point_y
+	movff	POSTINC0, start_point_x		; set start point of shape, which in this case is calculated and moved into the correct file registers in Shoot_Bullet.
+	movff	start_point_x, PORTC		; outputs initial value of x
+	movff	start_point_y, PORTD		; outputs initial value of y
+	
+	call 	Draw_Shape
+skip_bullet
+	return
+	
+Draw_Shape 	
+	movf	Shape_Upper_Data, W, ACCESS	; address of shape data in PM
+	movwf	TBLPTRU				; load upper bits of shape PM address to TBLPTRU
+	movf	Shape_Higher_Data, W, ACCESS	; address of shape data in PM
+	movwf	TBLPTRH				; load high byte of shape PM address to TBLPTRH
+	movf	Shape_Lower_Data, W, ACCESS	; address of shape data in PM
+	movwf	TBLPTRL				; load low byte of shape PM address to TBLPTRL
+shapeloop 	
+	tblrd*+					; move one byte from PM to TABLAT, increment TBLPRT
+	movff	TABLAT, line_length		; move read data (lower byte of word) from TABLAT to line_length
+	tblrd*+
+	movff	TABLAT, direction_indicator	; move read data (higher byte of word) from TABLAT to direction_indicator
+	call	draw_line			; draws line of appropriate length in appropriate direction
+	decfsz	shapecounter, 1			; count down to zero
+	bra	shapeloop			; keep going until finished
+	return
+
+draw_line
+	movlw	0x01
+	cpfsgt	direction_indicator		; direction_indicator set to 0,1,2, or 3. 0 means draw left, 1 means draw right, 2 means draw up, 3 means draw down.
+	bra	horizontal_line
+	bra	vertical_line
+horizontal_line
+	cpfseq	direction_indicator
+	bra	draw_left
+	bra	draw_right
+vertical_line
+	movlw	0x02
+	cpfseq	direction_indicator
+	bra	draw_down
+	bra	draw_up
+	
+draw_left
+	movf	line_length, W, ACCESS		
+	addwf	PORTC, W, ACCESS		; takes current value of PORTC (x-axis), setup in the Draw function for the current shape, and adds desired line length to it. Put in W, to become the end condition for the loop.
+	;					; Note that (counterintuitively) decrementing draws to right or up, while incrementing draws to left or down. This is because we are feeding in a NEGATIVE voltage due to the op-amp.
+	bra 	testx1
+loopx1						; increments X, i.e. draws a line from right to left over several iterations
+	call	smalldelay			; small delay to give oscilloscope and PIC18 time to respond
+	incf 	PORTC, 1, ACCESS
+testx1	cpfseq 	PORTC, ACCESS
+	bra 	loopx1				; PORTC value not yet equal to W value, which is PORTC + line length. Loop and increment PORTC again until it is.
+	call	smalldelay
+	return
+draw_right					; identical concept to draw_left above, except it subtracts line length from PORTC and decrements to that value.
+	movf	line_length, W, ACCESS
+	subwf	PORTC, W, ACCESS
+	bra	testx2
+loopx2						; decrements X, i.e. draws a line from left to right
+	call	smalldelay
+	decf 	PORTC, 1, ACCESS
+testx2	cpfseq 	PORTC, ACCESS
+	bra 	loopx2
+	call	smalldelay
+	return
+draw_up						; identical concept to draw_left above, except it subtracts line length from PORTD (y-axis) and decrements PORTD until it hits that value.
+	movf	line_length, W, ACCESS
+	subwf	PORTD, W, ACCESS
+	bra	testy2
+loopy2						; decrements Y, i.e. draws a line from bottom to top
+	call	smalldelay
+	decf 	PORTD, 1, ACCESS
+testy2	cpfseq 	PORTD, ACCESS
+	bra 	loopy2
+	call	smalldelay
+	return
+draw_down					; identical concept to draw_left above, except it adds line length to PORTD (y-axis) and increments PORTD until it hits that value.
+	movf	line_length, W, ACCESS
+	addwf	PORTD, W, ACCESS
+	bra	testy1
+loopy1						; increments Y, i.e. draws a line from top to bottom
+	call	smalldelay
+	incf 	PORTD, 1, ACCESS
+testy1	cpfseq 	PORTD, ACCESS
+	bra 	loopy1		    
+	call	smalldelay
+	return
+	
+	
+	end
