@@ -1,0 +1,60 @@
+	#include p18f87k22.inc
+
+	    extern Setup, smalldelay, Draw, Draw_Shape, draw_line, Animate_Alien, Animate_Bullet, Key_Press, hit_check_row_1, clear_aliens_if_hit, end_game
+	    extern direction_indicator, start_point_x, start_point_y, line_length, delaycounter, shapecounter, Shape_Upper_Data, Shape_Higher_Data, Shape_Lower_Data, initial_counter
+	    extern cover_counter, alien_counter, interrupt_counter, animate_indicator, bullet_activate, left_right_check, animate_right_counter, animate_left_counter
+	    extern animate_down_counter, Key1_Press, Key2_Press, Key3_Press, Key_Pressed, row_1_check, row_2_check, row_3_check, row_4_check, mothership_row_check
+	    extern cover_row_check, column_1_check, column_2_check, column_3_check, column_4_check, column_5_check, mothership_column_check, cover_1_column_check
+	    extern cover_2_column_check, cover_3_column_check, cover_4_column_check, AoD_counter, columnvalue10, columnvalue22, columnvalue50, columnvalue20
+	    extern victory_counter, defeatcounter, end_game_counter, aliens_dead_on_row, downcounter
+
+rst	code	0				
+	call	Setup
+	goto	start
+	
+int_hi	code	0x0008				; high-priority interrupt vector 
+	btfss	INTCON, TMR0IF			; check if TIMER0 interrupt
+	retfie	FAST				; if not return
+	incf	interrupt_counter, 1, ACCESS	; increment interrupt_counter - this informs our animation routine of whether to animate horizontally or down
+	bsf	animate_indicator, 0		; animate aliens on next time through program
+	movlw	.15
+	cpfseq	interrupt_counter
+	bra	no_action_needed		; only change left_right_check if 4 interrupts have occurred
+	btfsc	left_right_check, 0		; set or clear bit0 of left_right_check after 4th interrupt - tells animation routine to animate left (set) or right (clear)
+	bra	clear_LR_check
+	btfss	left_right_check, 0
+	bra	set_LR_check
+clear_LR_check
+	bcf	left_right_check, 0
+	bra	no_action_needed
+set_LR_check
+	bsf	left_right_check, 0
+	bra	no_action_needed
+no_action_needed	
+	bcf	INTCON, TMR0IF			; resets interrupt flag
+	retfie	FAST
+
+start
+
+	call	Draw
+
+	btfsc	animate_indicator, 0		; only animate aliens if interrupt has occurred
+	call	Animate_Alien
+	bcf	animate_indicator, 0		; clear animate_indicator until next interrupt
+	
+	call	Key_Press			; check if key 1, 2, or 3 is being pressed, and animate ship (left/right motion with keys 1/3) or activate bullet (key 2) if appropriate.
+    	
+	btfsc	bullet_activate, 0		; only animate bullet if it's active
+	call	Animate_Bullet
+	
+	call	end_game			; check for victory or defeat conditions
+	
+	goto 	start				; re-run program from start (i.e. not reiterating the initial setup code)
+
+
+
+	
+
+
+    
+    end
