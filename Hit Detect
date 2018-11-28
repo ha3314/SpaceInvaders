@@ -1,0 +1,533 @@
+#include p18f87k22.inc
+
+            global  hit_check_row_1, clear_aliens_if_hit
+	    extern direction_indicator, start_point_x, start_point_y, line_length, delaycounter, shapecounter, Shape_Upper_Data, Shape_Higher_Data, Shape_Lower_Data, initial_counter
+	    extern cover_counter, alien_counter, interrupt_counter, animate_indicator, bullet_activate, left_right_check, animate_right_counter, animate_left_counter
+	    extern animate_down_counter, Key1_Press, Key2_Press, Key3_Press, Key_Pressed, row_1_check, row_2_check, row_3_check, row_4_check, mothership_row_check
+	    extern cover_row_check, column_1_check, column_2_check, column_3_check, column_4_check, column_5_check, mothership_column_check, cover_1_column_check
+	    extern cover_2_column_check, cover_3_column_check, cover_4_column_check, AoD_counter, columnvalue10, columnvalue22, columnvalue50, columnvalue20
+	    extern victory_counter, defeatcounter, end_game_counter, aliens_dead_on_row, downcounter
+	    
+
+Detectcode CODE                      
+
+hit_check_row_1					; hit detection works by checking if the bullet's y position matches the minimum y position of a sprite (a "row"), then if it does, checking if it matches the x positions of any of the sprites in that "row" (a "column")
+						; We make use of the fact that all the aliens will share horizontal/vertical positions with others due to the space invaders format, and that a bullet can only intersect with one row/column at a time as the game is 2D.
+    movlb   0x4
+    movf    0x400, W
+    cpfseq  0x40C				; check if bullet y position matches y position of first row of aliens
+    bra	    hit_check_row_2			    ; if not, check second row
+    bsf	    row_1_check, 0			    ; if yes, indicate bullet hit first row and call column checks to check if it hit a column
+    bsf	    STATUS, 0				; set carry bit, so no borrow bit in "subfwb" as no "subfw" exists and no "subtract literal from W" exists
+    call    column1check			; checks if bullet at row 1 hit column 1
+    bsf	    STATUS, 0
+    call    column2check			; and so on for columns 2, 3, 4, 5
+    bsf	    STATUS, 0
+    call    column3check
+    bsf	    STATUS, 0
+    call    column4check
+    bsf	    STATUS, 0
+    call    column5check
+    return
+    
+hit_check_row_2
+    movlw   .32
+    subwf   0x400, W
+    cpfseq  0x40C				 ; check if bullet y position matches y position of second row of aliens
+    bra	    hit_check_row_3			    ; if not, check third row
+    bsf	    row_2_check, 0			    ; if yes, indicate bullet hit second row and call column detectors to check if it hit a column
+    call    column1check
+    call    column2check
+    call    column3check
+    call    column4check
+    call    column5check
+    return
+    
+hit_check_row_3
+    movf    0x402, W
+    cpfseq  0x40C				; check if bullet y position matches y position of third row of aliens
+    bra	    hit_check_row_4			    ; if not, check fourth row
+    bsf	    row_3_check, 0			    ; if yes, indicate bullet hit third row and call column detectors to check if it hit a column
+    call    column1check
+    call    column2check
+    call    column3check
+    call    column4check
+    call    column5check
+    return
+    
+hit_check_row_4					
+    movf    0x404, W
+    cpfseq  0x40C				; check if bullet y position matches y position of fourth row of aliens
+    bra	    mothershiprowcheck			    ; if not, check mothership row
+    bsf	    row_4_check, 0			    ; if yes, indicate bullet hit fourth row and call column detectors to check if it hit a column
+    call    column1check
+    call    column2check
+    call    column3check
+    call    column4check
+    call    column5check
+    return
+    
+mothershiprowcheck
+    movf    0x406, W
+    cpfseq  0x40C				; check if bullet y position matches y position of mothership
+    bra	    coverrowcheck			    ; if not, check cover
+    bsf	    mothership_row_check, 0		    ; if yes, indicate bullet hit mothership row and call column detectors to check if it hit a column
+    call    mothershipcolumncheck
+    return
+    
+coverrowcheck
+    movf    0x40A, W
+    cpfseq  0x40C				; check if bullet y position matches y position of covers
+    return					    ; if not, nothing has been hit, return
+    bsf	    cover_row_check, 0			    ; if yes, indicate bullet hit cover row and call column detectors to check if it hit a column
+    call    cover1columncheck
+    call    cover2columncheck
+    call    cover3columncheck
+    call    cover4columncheck
+    return
+
+column1check
+    movlb   0x4
+    movf    0x401, W
+    cpfslt  0x40D				    ; check if bullet x position > minimum alien column 1 position
+    return						; if not, must have missed column 1, return
+    subfwb  columnvalue10, W
+    cpfsgt  0x40D					; if yes, check if bullet x position also < maximum alien column 1 position
+    return						    ; if not, missed column 1, return
+    bsf	    column_1_check, 0				    ; if yes, hit column 1, set bit to indicate and return
+    return
+
+column2check					    ; column 2 is offset by a decrement of 32 from column 1; so we can load in the start position of column 1 to W in column1check, and then decrement as appropriate to get to the start position of column 2, and so on.
+    subfwb  columnvalue22, W			    ; no "sub literal from W" so had to use this subwfb method - see "Values_Setup" for info			    
+    cpfslt  0x40D				    ; check if bullet x > minimum column 2 position (22 higher than max column 1 position)
+    return						; if not, didn't hit column 2, return
+    subfwb  columnvalue10, W				
+    cpfsgt  0x40D					; if yes, check if bullet x position also < maximum alien column 2 position
+    return						    ; if not, missed column 2, return
+    bsf	    column_2_check, 0				    ; if yes, hit column 2, set bit to indicate
+    return
+    
+column3check
+    subfwb  columnvalue22, W			    
+    cpfslt  0x40D				    ; check if bullet x > minimum column 3 position
+    return						; if not, missed, return
+    subfwb  columnvalue10, W				
+    cpfsgt  0x40D					; if yes, check if bullet x position also < maximum alien column 3 position
+    return						    ; if not, missed column 3, return
+    bsf	    column_3_check, 0				    ; if yes, hit column 3, set bit to indicate
+    return
+    
+column4check
+    subfwb  columnvalue22, W				    
+    cpfslt  0x40D				    ; check if bullet x > minimum column 4 position
+    return						; if not, missed column 4, return
+    subfwb  columnvalue10, W				
+    cpfsgt  0x40D					; if yes, check if bullet x position also < maximum alien column 4 position
+    return						    ; if not, missed column 4, return
+    bsf	    column_4_check, 0				    ; if yes, hit column 4, set bit to indicate
+    return
+    
+column5check
+    subfwb  columnvalue22, W			    
+    cpfslt  0x40D				    ; check if bullet x > minimum column 5 position
+    return						; if not, missed column 5, return
+    subfwb  columnvalue10, W					
+    cpfsgt  0x40D					; if yes, check if bullet x position also < maximum alien column 5 position
+    return						    ; if not, missed column 5, return
+    bsf	    column_5_check, 0				    ; if yes, hit column 5, set bit to indicate
+    return
+
+mothershipcolumncheck
+    movf    0x407, W
+    cpfslt  0x40D				    ; check if bullet x > minimum mothership position
+    return						; if not, missed mothership, return
+    subfwb  columnvalue20, W			    
+    cpfsgt  0x40D					; if yes, check if bullet x position also < maximum alien mothership position
+    return						    ; if yes, hit mothership, set bit to indicate
+    bsf	    mothership_column_check, 0
+    return
+    
+cover1columncheck				    ; and the same idea applies in "cover1,2,3,4columncheck" as to the "column1,2,3,4,5check" above, the covers just have different positions and spacing.
+    movf    0x40B, W
+    cpfslt  0x40D
+    return
+    subfwb  columnvalue20, W
+    cpfsgt  0x40D
+    return
+    bsf	    cover_1_column_check, 0
+    return
+cover2columncheck
+    subfwb  columnvalue50, W
+    cpfslt  0x40D
+    return
+    subfwb  columnvalue20, W
+    cpfsgt  0x40D
+    return
+    bsf	    cover_2_column_check, 0
+    return
+cover3columncheck
+    subfwb  columnvalue50, W
+    cpfslt  0x40D
+    return
+    subfwb  columnvalue20, W
+    cpfsgt  0x40D
+    return
+    bsf	    cover_3_column_check, 0
+    return
+cover4columncheck
+    subfwb  columnvalue50, W
+    cpfslt  0x40D
+    return
+    subfwb  columnvalue20, W
+    cpfsgt  0x40D
+    return
+    bsf	    cover_4_column_check, 0
+    return 
+    
+clear_aliens_if_hit				    ; takes information gathered by hitchecker (which row/column was hit if any) and kills an alien if required
+    lfsr    FSR1, 0x500				    ; load FSR1 with Alive_or_Dead location in DM (0x500)
+    call    row_1_hit				    ; checks whether row 1 was hit and kills an alien if row_1_check and column_X_check are both set.
+    call    row_2_hit
+    call    row_3_hit
+    call    row_4_hit
+    call    mothership_row_hit
+    call    cover_row_hit
+    
+    bcf	    row_1_check, 0			    ; clear all the column and row indicators before returning
+    bcf	    row_2_check, 0
+    bcf	    row_3_check, 0
+    bcf	    row_4_check, 0
+    bcf	    mothership_row_check, 0
+    bcf	    cover_row_check, 0
+    bcf	    column_1_check, 0
+    bcf	    column_2_check, 0
+    bcf	    column_3_check, 0
+    bcf	    column_4_check, 0
+    bcf	    column_5_check, 0
+    bcf	    mothership_column_check, 0
+    bcf	    cover_1_column_check, 0
+    bcf	    cover_2_column_check, 0
+    bcf	    cover_3_column_check, 0
+    bcf	    cover_4_column_check, 0
+    return
+    
+row_1_hit
+    movlw   .0
+    btfss   row_1_check, 0			    ; if row 1 got hit, check if the columns also got hit, i.e. we need to kill an alien. Otherwise, don't change anything for the row 1 aliens.
+    bra	    row_1_not_hit
+    bra	    row_1_got_hit
+row_1_not_hit
+    addwf   POSTINC1				    ; don't change first 5 values of AoD (for first five aliens, i.e. those on row 1) if row 1 wasn't hit
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+row_1_got_hit
+    btfsc   column_1_check, 0			    ; row 1 was hit - if column 1 was also hit, go kill alien 1_1
+    bra	    kill_alien_1_1
+    btfsc   column_2_check, 0			    ; and repeat for the other columns
+    bra	    kill_alien_1_2
+    btfsc   column_3_check, 0			
+    bra	    kill_alien_1_3
+    btfsc   column_4_check, 0			
+    bra	    kill_alien_1_4
+    btfsc   column_5_check, 0		
+    bra	    kill_alien_1_5
+    return					    ; return if no columns hit
+kill_alien_1_1					    ; set first entry in AoD to one (i.e. first alien is dead), leave others for row 1 alone, return
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			    ; only deactivate bullet if alien has not already been killed previously - if it has we need the bullet to continue moving upwards.
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_1_2					    ; and similar to above for alien 1_2, the 2nd entry in AoD, the second alien on the first row
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_1_3					    ; and so on
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			    ; only deactivate bullet if alien has not already been killed
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_1_4					    ; and so on
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			    ; only deactivate bullet if alien has not already been killed
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    return
+kill_alien_1_5					    ; and so on
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			    ; only deactivate bullet if alien has not already been killed
+    bsf	    POSTINC1, 0
+    return
+    
+row_2_hit					    ; same concept as row_1_hit above, using row 2's variables
+    ;						    ; we call ALL the row_X_hits each time, so that we can use FSR1 and AoD to store alive/dead info. If no columns in row 1 were hit, it'll increment through the first five values doing nothing, so that when we call row_2_hit POSTINC1 points to the correct place.
+    movlw   .0
+    btfss   row_2_check, 0			
+    bra	    row_2_not_hit
+    bra	    row_2_got_hit
+row_2_not_hit
+    addwf   POSTINC1				
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+row_2_got_hit
+    btfsc   column_1_check, 0			
+    bra	    kill_alien_2_1
+    btfsc   column_2_check, 0			
+    bra	    kill_alien_2_2
+    btfsc   column_3_check, 0			
+    bra	    kill_alien_2_3
+    btfsc   column_4_check, 0			
+    bra	    kill_alien_2_4
+    btfsc   column_5_check, 0			
+    bra	    kill_alien_2_5
+    return					
+kill_alien_2_1					
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_2_2					
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_2_3					
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_2_4					
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    return
+kill_alien_2_5					
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    return
+    
+row_3_hit					    ; same idea once again as row_1,2_hit
+    movlw   .0
+    btfss   row_3_check, 0			
+    bra	    row_3_not_hit
+    bra	    row_3_got_hit
+row_3_not_hit
+    addwf   POSTINC1				
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+row_3_got_hit
+    btfsc   column_1_check, 0			
+    bra	    kill_alien_3_1
+    btfsc   column_2_check, 0			
+    bra	    kill_alien_3_2
+    btfsc   column_3_check, 0			
+    bra	    kill_alien_3_3
+    btfsc   column_4_check, 0			
+    bra	    kill_alien_3_4
+    btfsc   column_5_check, 0			
+    bra	    kill_alien_3_5
+    return					
+kill_alien_3_1					
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_3_2					
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_3_3					
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_3_4					
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    return
+kill_alien_3_5					
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    return
+    
+row_4_hit					    ; same idea once again as row_1,2,3_hit
+    movlw   .0
+    btfss   row_4_check, 0			
+    bra	    row_4_not_hit
+    bra	    row_4_got_hit
+row_4_not_hit
+    addwf   POSTINC1				
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+row_4_got_hit
+    btfsc   column_1_check, 0			
+    bra	    kill_alien_3_1
+    btfsc   column_2_check, 0			
+    bra	    kill_alien_3_2
+    btfsc   column_3_check, 0			
+    bra	    kill_alien_3_3
+    btfsc   column_4_check, 0			
+    bra	    kill_alien_3_4
+    btfsc   column_5_check, 0			
+    bra	    kill_alien_3_5
+    return					
+kill_alien_4_1					
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_4_2					
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_4_3					
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    addwf   POSTINC1
+    return
+kill_alien_4_4					
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    addwf   POSTINC1
+    return
+kill_alien_4_5					
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    addwf   POSTINC1
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    return
+    
+mothership_row_hit				    ; same idea once again as other row_X_hits	
+    movlw   .0
+    btfss   mothership_row_check, 0
+    bra	    mothership_not_hit
+    bra	    mothership_got_hit
+mothership_not_hit
+    addwf   POSTINC1				
+    return
+mothership_got_hit
+    btfsc   mothership_column_check, 0		
+    bra	    kill_mothership			
+    addwf   POSTINC1				
+    return
+kill_mothership
+    btfss   INDF1, 0
+    bcf	    bullet_activate, 0			
+    bsf	    POSTINC1, 0
+    return
+    
+cover_row_hit
+    btfss   cover_row_check, 0
+    bra	    cover_not_hit
+    bra	    cover_got_hit
+cover_not_hit					    ; if cover not hit, do nothing. Don't need to increment through POSTINC1s as before because the covers' data isn't stored in AoD; they don't die.
+    return
+cover_got_hit
+    btfsc   cover_1_column_check, 0		    ; if cover 1 column also hit, deactivate bullet
+    bcf	    bullet_activate, 0
+    btfsc   cover_2_column_check, 0		    ; and same for other covers. They just stop the bullet if hit, nothing else.
+    bcf	    bullet_activate, 0
+    btfsc   cover_3_column_check, 0		
+    bcf	    bullet_activate, 0
+    btfsc   cover_4_column_check, 0		
+    bcf	    bullet_activate, 0
+    return					    ; return if no covers hit
+
+
+
+    end
