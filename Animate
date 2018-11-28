@@ -1,0 +1,143 @@
+#include p18f87k22.inc
+
+            global  Animate_Alien, Key_Press, Animate_Bullet
+	    extern  hit_check_row_1,  clear_aliens_if_hit
+	    extern direction_indicator, start_point_x, start_point_y, line_length, delaycounter, shapecounter, Shape_Upper_Data, Shape_Higher_Data, Shape_Lower_Data, initial_counter
+	    extern cover_counter, alien_counter, interrupt_counter, animate_indicator, bullet_activate, left_right_check, animate_right_counter, animate_left_counter
+	    extern animate_down_counter, Key1_Press, Key2_Press, Key3_Press, Key_Pressed, row_1_check, row_2_check, row_3_check, row_4_check, mothership_row_check
+	    extern cover_row_check, column_1_check, column_2_check, column_3_check, column_4_check, column_5_check, mothership_column_check, cover_1_column_check
+	    extern cover_2_column_check, cover_3_column_check, cover_4_column_check, AoD_counter, columnvalue10, columnvalue22, columnvalue50, columnvalue20
+	    extern victory_counter, defeatcounter, end_game_counter, aliens_dead_on_row, downcounter
+
+Animatecode CODE                      
+
+
+Animate_Alien					; when animate_indicator is set, this is called to move the start positions of aliens type 1, 2, and 3.
+	movlb	0x4
+	lfsr	FSR0, 0x400		; alien 1,2,3 start positions are first values stored at Sprite_Starts as they are first sprites drawn. So set FSR0 to Sprite_Starts.
+	movlw	.15				; moves aliens to the left/right 15 times before moving down and reversing (i.e. after 15 interrupts)
+	cpfseq	interrupt_counter		
+	bra	animate_aliens_horizontal
+	bra	animate_aliens_down
+
+animate_aliens_horizontal
+	btfsc	left_right_check, 0		; set/cleared when interrupt_counter = 15 in interrupt (i.e. aliens have moved all the way to right or left on a row), so they reverse direction when at end of row.
+	bra 	animate_aliens_left		; if set, move aliens left
+	bra	animate_aliens_right		; if clear, animate aliens right
+
+animate_aliens_right
+	clrf	animate_right_counter		; reset counter after previous time
+right_animate_loop
+	incf	animate_right_counter, 1
+	movlw	0
+	addwf	POSTINC0, 1			; don't move y start positions (add 0 to them)
+	movlw	.5
+	subwf	POSTINC0, 1			; move x start positions to right by 5
+	movlw	.3				; 3 start positions to move (alien 1,2,3)
+	cpfseq	animate_right_counter
+	bra	right_animate_loop
+	return
+
+animate_aliens_left
+	clrf	animate_left_counter
+left_animate_loop
+	incf	animate_left_counter, 1		; increment up to 3 to loop 3 times
+	movlw	0
+	addwf	POSTINC0, 1			; don't move y start positions (add 0 to them)
+	movlw	.5
+	addwf	POSTINC0, 1			; move x start positions to left by 5
+	movlw	.3				; 3 start positions to move (alien 1,2,3)
+	cpfseq	animate_left_counter
+	bra	left_animate_loop
+	return
+
+animate_aliens_down
+	clrf	animate_down_counter		; increment up to 3 to loop 3 times
+down_animate_loop
+	incf	animate_down_counter, 1
+	movlw	.16
+	addwf	POSTINC0, 1			; move y start positions
+	movlw	0
+	addwf	POSTINC0, 1			; don't move x start positions
+	movlw	.3				; 3 start positions to move (alien 1,2,3)
+	cpfseq	animate_down_counter
+	bra	down_animate_loop
+	incf	downcounter
+	clrf	interrupt_counter		; clear interrupt_counter now we've moved down, so it counts up to 15 again while aliens move in opposite direction along next row.
+	return
+	
+	
+	
+Key_Press					; determines which key is being pressed on keypad
+	clrf 	LATE
+	movlw 	b'11110000'
+	movwf	TRISE, ACCESS			; Port E bits 4 to 7 inputs
+	movlw	0x0f				; Light up lower nibble
+	movwf	PORTE, ACCESS
+	
+	movlw 	b'00001111'	    
+	subwf 	PORTE, W, ACCESS		; subtract 00001111 from value in PORTE, put in W
+	movwf 	Key_Pressed			; move from W to Key_Pressed
+	
+	clrf 	LATE
+	movlw 	b'00001111'
+	movwf	TRISE, ACCESS			; Port E bits 0 to 3 inputs
+	movlw	0xf0				; light up higher nibble
+	movwf	PORTE, ACCESS
+	
+	movlw 	b'11110000'
+	subwf 	PORTE, W, ACCESS		; subtract 11110000 from value in PORTE, put in W
+	
+	addwf 	Key_Pressed, W, ACCESS		; add value in Key_Pressed to value in W, put in W - gives 8 bit number telling which column and row are being pressed
+
+Animate_Ship
+Key1_Check	
+	cpfseq	Key1_Press			; check if W is equal to value corresponding to key1 press stored in FR 0x08
+	bra	Key3_Check			    ; if not, check key 3
+	bra	Move_Ship_Left			    ; if yes, move ship left
+Key3_Check
+	cpfseq 	Key3_Press			; W = value meaning key 3 is being pressed?
+	bra	Key2_Check			    ; check key 2 if not
+	bra	Move_Ship_Right			    ; move ship right if yes
+Key2_Check
+	cpfseq	Key2_Press			; W = key2 value?
+	return					    ; if not, return
+	btfss	bullet_activate, 0		; don't reactivate bullet if already active
+	bra	Shoot_Bullet			    ; if yes, shoot bullet
+	return
+
+Move_Ship_Left
+	movlb	0x4
+	incf	0x409, 1, BANKED		; increment start x position of ship (i.e. move it left) for next draw cycle, in response to Key1 press
+	return
+Move_Ship_Right
+	movlb	0x4
+	decf	0x409, 1, BANKED		; decrement start x position of ship (i.e. move it right) for next draw cycle, in response to Key3 press
+	return
+Shoot_Bullet
+	bsf	bullet_activate, 0, ACCESS	; activate bullet on next draw cycle, in response to Key2 press
+	movlb	0x4
+	movff	0x408, 0x40C
+	movff	0x409, 0x40D
+	movlw	.10
+	subwf	0x40D, f, BANKED
+	movlw	.10
+	subwf	0x40C, f, BANKED		; move ship start position (0x408, 0x409) + amount to move to tip of ship, to 0x40C and 0x40D, so "POSTINC0" in Draw Bullet takes these values
+	return
+	
+	
+	
+Animate_Bullet					; moves the bullet upwards if bullet is active
+	movlw	0x05
+	movlb	0x4
+	cpfsgt	0x40C, BANKED
+	bra	stop_bullet			; if bullet nears top of screen (0x05), stop drawing it
+	decf	0x40C, BANKED			; otherwise decrement its y start position (move it up)
+	call	hit_check_row_1			; call hit detector to see if it's hit anything after moving up
+	call	clear_aliens_if_hit		; call clear_aliens to change aliens from alive to dead if hit
+	return
+stop_bullet					; deactivates bullet so it doesn't draw on next cycle
+	bcf	bullet_activate, 0, ACCESS
+	return
+	
+    end
